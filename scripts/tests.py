@@ -54,8 +54,6 @@ class RabbitMQTests(unittest.TestCase):
         clientConn, clientChannel = self._conn()
         clientChannel.queue_declare(queue=queue)
         method, properties, body = self._receiveOnce(clientChannel, queue=queue)
-        srvConn.close()
-        clientConn.close()
         
         self.assertEqual(body, message)
         self.assertNotEqual(method, None)
