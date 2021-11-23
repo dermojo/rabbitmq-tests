@@ -31,15 +31,16 @@ class RabbitMQTests(unittest.TestCase):
             chan.cancel()
             return method, properties, body
 
-    def _conn(self):
+    def _conn(self, timeout=10, sleep=0.1):
         # loop until the container is up
-        for _ in range(100):
+        timeEnd = time.time() + timeout
+        while time.time() <= timeEnd:
             try:
                 conn = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
                 chan = conn.channel()
                 return conn, chan
             except (pika.exceptions.IncompatibleProtocolError, pika.exceptions.AMQPConnectionError):
-                time.sleep(0.1)
+                time.sleep(sleep)
         raise RuntimeError('connect failed')
 
     def testHelloWorld(self):
