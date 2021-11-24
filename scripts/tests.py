@@ -103,6 +103,7 @@ class RabbitMQTests(unittest.TestCase):
 # - durability
 #   - note: also affects publishing! (https://www.rabbitmq.com/publishers.html#message-properties)
 # - cluster
+#   - https://www.rabbitmq.com/quorum-queues.html
 # - custom headers (tags)
 # - C/C++ API
 
