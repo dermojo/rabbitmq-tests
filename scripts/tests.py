@@ -7,6 +7,7 @@ import unittest
 import uuid
 
 import pika
+from pika.spec import BasicProperties
 
 CONTAINER_NAME = 'rabbitmq-test-server'
 DOCKER_CLI = ('docker', 'run', '-it', '--rm', '--name', CONTAINER_NAME,
@@ -18,7 +19,7 @@ class RabbitMQTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # start a rabbitmq container
-        sys.stderr.write('Starting container\n')
+        # sys.stderr.write('Starting container\n')
         cls._log = open('server.log', 'wt')
         cls._proc = subprocess.Popen(
             DOCKER_CLI, stdout=cls._log, stderr=subprocess.STDOUT)
@@ -26,7 +27,7 @@ class RabbitMQTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         # stop the container again
-        sys.stderr.write('Stopping container\n')
+        # sys.stderr.write('Stopping container\n')
         cls._proc.terminate()
         cls._proc.wait()
         cls._proc = None
@@ -136,7 +137,8 @@ class RabbitMQTests(unittest.TestCase):
         clientChanAllTopics.exchange_declare(exchange=exchange, exchange_type=exchangeType)
         result = clientChanAllTopics.queue_declare(queue='', exclusive=True)
         queueAllTopics = result.method.queue
-        clientChanAllTopics.queue_bind(exchange=exchange, queue=queueAllTopics, routing_key='topic.#')
+        clientChanAllTopics.queue_bind(exchange=exchange, queue=queueAllTopics,
+                                       routing_key='topic.#')
 
         # now publish multiple messages
         for topic in ['x', 'y'] + topics:
@@ -163,8 +165,52 @@ class RabbitMQTests(unittest.TestCase):
                 clientChanAllTopics.cancel()
                 break
 
+    def testRequestReponse(self):
+        '''Request/response RPC test'''
+        exchange = ''
+        serverQueue = 'request_response_test'
+        request = b'my request'
+        response = b'my response'
+
+        srvChannel = self._conn()
+        srvChannel.queue_declare(queue=serverQueue)
+
+        clientChannel = self._conn()
+        result = clientChannel.queue_declare(queue='', exclusive=True)
+        callbackQueue = result.method.queue
+
+        clientChannel.basic_publish(exchange=exchange,
+                                    routing_key=serverQueue,
+                                    properties=pika.BasicProperties(reply_to=callbackQueue,
+                                                                    correlation_id='123',
+                                                                    content_type='text/plain'),
+                                    body=request
+                                    )
+
+        # receive the request
+        method, properties, body = self._receiveOnce(srvChannel, queue=serverQueue)
+        self.assertEqual(body, request)
+        self.assertEqual(properties.reply_to, callbackQueue)
+        self.assertEqual(properties.correlation_id, '123')
+        self.assertEqual(properties.content_type, 'text/plain')
+
+        # send a response
+        srvChannel.basic_publish(exchange=exchange,
+                                 routing_key=properties.reply_to,
+                                 properties=pika.BasicProperties(
+                                     correlation_id=properties.correlation_id,
+                                     content_type='text/plain'),
+                                 body=response
+                                 )
+
+        # receive the response
+        method, properties, body = self._receiveOnce(clientChannel, queue=callbackQueue)
+        self.assertEqual(body, response)
+        self.assertEqual(properties.correlation_id, '123')
+        self.assertEqual(properties.content_type, 'text/plain')
+
 # TODO: (see https://www.rabbitmq.com/queues.html)
-# - request/response (correlation IDs)
+# - using an exchange before it was declared
 # - max. message/queue lifetime -> TTL
 #   - queue length limit / policy: https://www.rabbitmq.com/maxlength.html
 # - durability
