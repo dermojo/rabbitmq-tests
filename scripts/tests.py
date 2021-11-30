@@ -171,6 +171,8 @@ class RabbitMQTests(unittest.TestCase):
         serverQueue = 'request_response_test'
         request = b'my request'
         response = b'my response'
+        # custom headers (for testing)
+        headers = {'a': 123, 'b': 'x'}
 
         srvChannel = self._conn()
         srvChannel.queue_declare(queue=serverQueue)
@@ -183,7 +185,8 @@ class RabbitMQTests(unittest.TestCase):
                                     routing_key=serverQueue,
                                     properties=pika.BasicProperties(reply_to=callbackQueue,
                                                                     correlation_id='123',
-                                                                    content_type='text/plain'),
+                                                                    content_type='text/plain',
+                                                                    headers=headers),
                                     body=request
                                     )
 
@@ -193,6 +196,7 @@ class RabbitMQTests(unittest.TestCase):
         self.assertEqual(properties.reply_to, callbackQueue)
         self.assertEqual(properties.correlation_id, '123')
         self.assertEqual(properties.content_type, 'text/plain')
+        self.assertEqual(properties.headers, headers)
 
         # send a response
         srvChannel.basic_publish(exchange=exchange,
@@ -202,6 +206,7 @@ class RabbitMQTests(unittest.TestCase):
                                      content_type='text/plain'),
                                  body=response
                                  )
+        srvChannel.basic_ack(delivery_tag=method.delivery_tag)
 
         # receive the response
         method, properties, body = self._receiveOnce(clientChannel, queue=callbackQueue)
@@ -215,9 +220,10 @@ class RabbitMQTests(unittest.TestCase):
 #   - queue length limit / policy: https://www.rabbitmq.com/maxlength.html
 # - durability
 #   - note: also affects publishing! (https://www.rabbitmq.com/publishers.html#message-properties)
+# - re-publish last message on subscribe
+# - publisher confirms? 
 # - cluster
 #   - https://www.rabbitmq.com/quorum-queues.html
-# - custom headers (tags)
 # - C/C++ API (with ASIO - check https://github.com/CopernicaMarketingSoftware/AMQP-CPP/issues)
 # - list queues / bindings / exchanges using a client
 # - https://www.rabbitmq.com/heartbeats.html
